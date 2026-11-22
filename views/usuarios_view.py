@@ -3,9 +3,9 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
-from database.db_manager import DatabaseManager
+from database.db_manager import DatabaseManager, validate_password
 from models.usuario import ROLES
-from views.ui_helpers import BG, MUTED, PRIMARY, configure_treeview, section_title
+from views.ui_helpers import BG, MUTED, PRIMARY, TEXT, configure_treeview, section_title
 
 
 class UsuariosView(ctk.CTkToplevel):
@@ -36,6 +36,14 @@ class UsuariosView(ctk.CTkToplevel):
         ctk.CTkButton(
             form, text="Crear usuario", fg_color=PRIMARY, command=self.create,
         ).grid(row=1, column=3, sticky="ew", padx=8, pady=(0, 8))
+        ctk.CTkButton(
+            form, text="Modificar seleccionado", fg_color="#E9EFF7",
+            text_color=TEXT, command=self.update_selected,
+        ).grid(row=2, column=2, sticky="ew", padx=8, pady=(0, 8))
+        ctk.CTkButton(
+            form, text="Eliminar seleccionado", fg_color="#FDECEC",
+            text_color="#B42318", command=self.delete_selected,
+        ).grid(row=2, column=3, sticky="ew", padx=8, pady=(0, 8))
         panel = ctk.CTkFrame(self, fg_color="white", corner_radius=12)
         panel.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 24))
         panel.grid_columnconfigure(0, weight=1)
@@ -54,8 +62,10 @@ class UsuariosView(ctk.CTkToplevel):
         if not name or not username or not password:
             self.message.configure(text="Todos los campos son obligatorios.")
             return
-        if len(password) < 6:
-            self.message.configure(text="La contraseña debe tener al menos 6 caracteres.")
+        try:
+            validate_password(password)
+        except ValueError as exc:
+            self.message.configure(text=str(exc), text_color="#B42318")
             return
         try:
             self.database.create_user(name, username, password, self.role.get())
@@ -77,3 +87,47 @@ class UsuariosView(ctk.CTkToplevel):
                     user["id_usuario"], user["nombre"], user["usuario"], user["rol"],
                 )
             )
+
+    def _selected_user_id(self) -> int:
+        selection = self.tree.selection()
+        if not selection:
+            raise ValueError("Seleccione un usuario de la tabla.")
+        return int(self.tree.item(selection[0], "values")[0])
+
+    def update_selected(self):
+        try:
+            user_id = self._selected_user_id()
+            name = self.name.get().strip()
+            username = self.username.get().strip()
+            password = self.password.get()
+            if not name or not username:
+                raise ValueError("Complete nombre y usuario.")
+            self.database.update_user(
+                user_id, name, username, self.role.get(), password
+            )
+            self.message.configure(
+                text="Usuario modificado correctamente.", text_color="#087443"
+            )
+            self.refresh()
+        except ValueError as exc:
+            self.message.configure(text=str(exc), text_color="#B42318")
+        except sqlite3.IntegrityError:
+            self.message.configure(
+                text="Ese nombre de usuario ya existe.", text_color="#B42318"
+            )
+
+    def delete_selected(self):
+        try:
+            user_id = self._selected_user_id()
+            if not messagebox.askyesno(
+                "Eliminar usuario", "¿Eliminar el usuario seleccionado?",
+                parent=self,
+            ):
+                return
+            self.database.delete_user(user_id)
+            self.message.configure(
+                text="Usuario eliminado correctamente.", text_color="#087443"
+            )
+            self.refresh()
+        except (ValueError, sqlite3.Error) as exc:
+            self.message.configure(text=str(exc), text_color="#B42318")

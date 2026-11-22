@@ -6,9 +6,9 @@ from database.db_manager import DatabaseManager
 def seed_test_data(database: DatabaseManager) -> None:
     existing_users = {row["usuario"] for row in database.list_users()}
     if "garzon" not in existing_users:
-        database.create_user("Garzón de prueba", "garzon", "garzon123", "Garzon")
+        database.create_user("Garzón de prueba", "garzon", "Garzon123!", "Garzon")
     if "jefe" not in existing_users:
-        database.create_user("Jefe de prueba", "jefe", "jefe123", "Jefe")
+        database.create_user("Jefe de prueba", "jefe", "Jefe123!", "Jefe")
 
     with database.connection() as conn:
         count = conn.execute("SELECT COUNT(*) FROM reservas").fetchone()[0]
@@ -16,7 +16,7 @@ def seed_test_data(database: DatabaseManager) -> None:
     if count:
         return
 
-    waiter = database.authenticate("garzon", "garzon123")
+    waiter = database.authenticate("garzon", "Garzon123!")
     if waiter is None:
         raise RuntimeError("No fue posible obtener el usuario de prueba Garzon.")
     samples = (
@@ -37,7 +37,7 @@ def seed_test_data(database: DatabaseManager) -> None:
 
 def main() -> None:
     seed_test_data(DatabaseManager())
-    print("Datos de prueba listos. Usuario: garzon / garzon123; jefe / jefe123")
+    print("Datos de prueba listos. Usuario: garzon / Garzon123!; jefe / Jefe123!")
 
 
 if __name__ == "__main__":

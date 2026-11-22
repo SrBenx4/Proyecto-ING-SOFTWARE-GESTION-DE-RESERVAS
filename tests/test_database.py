@@ -15,7 +15,7 @@ class DatabaseAndReservationTests(unittest.TestCase):
         self.database = DatabaseManager(Path(self.temp_dir.name) / "test.db")
         self.login = LoginController(self.database)
         self.reservations = ReservaController(self.database)
-        self.admin = self.login.login("admin", "admin123")
+        self.admin = self.login.login("admin", "Admin123!")
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -25,7 +25,7 @@ class DatabaseAndReservationTests(unittest.TestCase):
         self.assertEqual(len(tables), 20)
         self.assertEqual(sum(table["ubicacion"] == "Salón" for table in tables), 6)
         self.assertEqual(sum(table["ubicacion"] == "Terraza" for table in tables), 14)
-        self.assertEqual(self.database.authenticate("admin", "admin123")["rol"], "Administrador")
+        self.assertEqual(self.database.authenticate("admin", "Admin123!")["rol"], "Administrador")
         self.assertIsNone(self.database.authenticate("admin", "incorrecta"))
 
     def test_required_fields_and_invalid_login_are_rejected(self):
@@ -73,13 +73,47 @@ class DatabaseAndReservationTests(unittest.TestCase):
         rows = self.reservations.reservations(date="2000-01-01", past_only=True)
         self.assertEqual(rows, [])
 
+    def test_password_must_be_strong_and_account_locks_after_three_attempts(self):
+        with self.assertRaisesRegex(ValueError, "símbolo"):
+            self.database.create_user("Prueba", "prueba", "Abcdef12", "Garzon")
+        for _ in range(3):
+            try:
+                self.login.login("admin", "Incorrecta1!")
+            except ValueError:
+                pass
+        self.assertTrue(self.database.is_user_locked("admin"))
+        remaining = self.database.get_lock_remaining("admin")
+        self.assertGreaterEqual(remaining, 119)
+        self.assertLessEqual(remaining, 120)
+        with self.assertRaisesRegex(ValueError, "Cuenta bloqueada"):
+            self.login.login("admin", "Admin123!")
+
+    def test_expired_lock_resets_failed_attempts(self):
+        for _ in range(3):
+            try:
+                self.login.login("admin", "Incorrecta1!")
+            except ValueError:
+                pass
+        with self.database.connection() as conn:
+            conn.execute(
+                "UPDATE usuarios SET bloqueado_hasta = 0 WHERE usuario = 'admin'"
+            )
+        self.assertFalse(self.database.is_user_locked("admin"))
+        self.assertIsNone(self.login.login("admin", "Incorrecta1!"))
+        with self.database.connection() as conn:
+            attempts = conn.execute(
+                "SELECT intentos_fallidos FROM usuarios WHERE usuario = 'admin'"
+            ).fetchone()["intentos_fallidos"]
+        self.assertEqual(attempts, 1)
+        self.assertIsNotNone(self.login.login("admin", "Admin123!"))
+
     def test_sample_data_script_is_idempotent(self):
         seed_test_data(self.database)
         first_count = len(self.database.list_reservations())
         seed_test_data(self.database)
         self.assertEqual(first_count, 3)
         self.assertEqual(len(self.database.list_reservations()), 3)
-        self.assertIsNotNone(self.database.authenticate("jefe", "jefe123"))
+        self.assertIsNotNone(self.database.authenticate("jefe", "Jefe123!"))
 
 
 if __name__ == "__main__":

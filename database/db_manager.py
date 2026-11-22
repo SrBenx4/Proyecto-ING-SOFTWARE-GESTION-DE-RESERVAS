@@ -1,13 +1,16 @@
 import hashlib
 import hmac
+import math
 import os
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 
 DEFAULT_DB_PATH = Path(__file__).with_name("database.db")
+ACCOUNT_LOCKOUT_SECONDS = 120
 MESES_INICIALES = (
     (1, 2, "Salón"), (2, 2, "Salón"), (3, 2, "Salón"),
     (4, 4, "Salón"), (5, 4, "Salón"), (6, 4, "Salón"),
@@ -40,6 +43,20 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def validate_password(password: str) -> str:
+    if len(password) < 8:
+        raise ValueError("La contraseña debe tener al menos 8 caracteres.")
+    if not any(character.isdigit() for character in password):
+        raise ValueError("La contraseña debe incluir al menos un número.")
+    if not any(character.isupper() for character in password):
+        raise ValueError("La contraseña debe incluir al menos una mayúscula.")
+    if not any(character.islower() for character in password):
+        raise ValueError("La contraseña debe incluir al menos una minúscula.")
+    if not any(not character.isalnum() for character in password):
+        raise ValueError("La contraseña debe incluir al menos un símbolo.")
+    return password
+
+
 class DatabaseManager:
     def __init__(self, db_path: Path | str = DEFAULT_DB_PATH):
         self.db_path = Path(db_path)
@@ -69,7 +86,10 @@ class DatabaseManager:
                     nombre TEXT NOT NULL,
                     usuario TEXT NOT NULL UNIQUE,
                     password TEXT NOT NULL,
-                    rol TEXT NOT NULL CHECK (rol IN ('Administrador', 'Garzon', 'Jefe'))
+                    rol TEXT NOT NULL CHECK (rol IN ('Administrador', 'Garzon', 'Jefe')),
+                    intentos_fallidos INTEGER NOT NULL DEFAULT 0,
+                    bloqueado INTEGER NOT NULL DEFAULT 0 CHECK (bloqueado IN (0, 1)),
+                    bloqueado_hasta REAL
                 );
                 CREATE TABLE IF NOT EXISTS clientes (
                     id_cliente INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,10 +120,37 @@ class DatabaseManager:
                     ON reservas(id_mesa, fecha, hora) WHERE estado = 'Activa';
                 """
             )
+            user_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(usuarios)").fetchall()
+            }
+            if "intentos_fallidos" not in user_columns:
+                conn.execute(
+                    "ALTER TABLE usuarios ADD COLUMN intentos_fallidos "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            if "bloqueado" not in user_columns:
+                conn.execute(
+                    "ALTER TABLE usuarios ADD COLUMN bloqueado "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            if "bloqueado_hasta" not in user_columns:
+                conn.execute("ALTER TABLE usuarios ADD COLUMN bloqueado_hasta REAL")
+                conn.execute(
+                    "UPDATE usuarios SET intentos_fallidos = 0, bloqueado = 0 "
+                    "WHERE bloqueado = 1"
+                )
             conn.execute(
                 "INSERT OR IGNORE INTO usuarios (nombre, usuario, password, rol) VALUES (?, ?, ?, ?)",
-                ("Administrador", "admin", hash_password("admin123"), "Administrador"),
+                ("Administrador", "admin", hash_password("Admin123!"), "Administrador"),
             )
+            legacy_admin = conn.execute(
+                "SELECT password FROM usuarios WHERE usuario = 'admin'"
+            ).fetchone()
+            if legacy_admin and verify_password("admin123", legacy_admin["password"]):
+                conn.execute(
+                    "UPDATE usuarios SET password = ? WHERE usuario = 'admin'",
+                    (hash_password("Admin123!"),),
+                )
             conn.executemany(
                 "INSERT OR IGNORE INTO mesas (numero_mesa, capacidad, ubicacion) VALUES (?, ?, ?)",
                 MESES_INICIALES,
@@ -113,12 +160,71 @@ class DatabaseManager:
     def authenticate(self, username: str, password: str) -> dict | None:
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT id_usuario, nombre, usuario, password, rol FROM usuarios WHERE usuario = ?",
+                "SELECT id_usuario, nombre, usuario, password, rol, "
+                "intentos_fallidos, bloqueado, bloqueado_hasta "
+                "FROM usuarios WHERE usuario = ?",
                 (username.strip(),),
             ).fetchone()
-        if row is None or not verify_password(password, row["password"]):
-            return None
-        return {key: row[key] for key in ("id_usuario", "nombre", "usuario", "rol")}
+            if row is None:
+                return None
+            now = time.time()
+            attempts_before = int(row["intentos_fallidos"])
+            if row["bloqueado"] and row["bloqueado_hasta"] is not None:
+                if row["bloqueado_hasta"] > now:
+                    return None
+                attempts_before = 0
+                conn.execute(
+                    "UPDATE usuarios SET intentos_fallidos = 0, bloqueado = 0, "
+                    "bloqueado_hasta = NULL WHERE id_usuario = ?",
+                    (row["id_usuario"],),
+                )
+            elif row["bloqueado"]:
+                return None
+            if not verify_password(password, row["password"]):
+                attempts = attempts_before + 1
+                locked = attempts >= 3
+                conn.execute(
+                    "UPDATE usuarios SET intentos_fallidos = ?, bloqueado = ?, "
+                    "bloqueado_hasta = ? "
+                    "WHERE id_usuario = ?",
+                    (
+                        attempts, 1 if locked else 0,
+                        now + ACCOUNT_LOCKOUT_SECONDS if locked else None,
+                        row["id_usuario"],
+                    ),
+                )
+                return None
+            conn.execute(
+                "UPDATE usuarios SET intentos_fallidos = 0, bloqueado = 0, "
+                "bloqueado_hasta = NULL "
+                "WHERE id_usuario = ?",
+                (row["id_usuario"],),
+            )
+            return {key: row[key] for key in ("id_usuario", "nombre", "usuario", "rol")}
+
+    def is_user_locked(self, username: str) -> bool:
+        return self.get_lock_remaining(username) > 0
+
+    def get_lock_remaining(self, username: str) -> int:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT id_usuario, bloqueado, bloqueado_hasta "
+                "FROM usuarios WHERE usuario = ?",
+                (username.strip(),),
+            ).fetchone()
+            if row is None or not row["bloqueado"]:
+                return 0
+            if row["bloqueado_hasta"] is None:
+                return 0
+            remaining = math.ceil(row["bloqueado_hasta"] - time.time())
+            if remaining <= 0:
+                conn.execute(
+                    "UPDATE usuarios SET intentos_fallidos = 0, bloqueado = 0, "
+                    "bloqueado_hasta = NULL WHERE id_usuario = ?",
+                    (row["id_usuario"],),
+                )
+                return 0
+            return remaining
 
     def list_users(self) -> list[dict]:
         with self.connection() as conn:
@@ -128,11 +234,52 @@ class DatabaseManager:
         return [dict(row) for row in rows]
 
     def create_user(self, name: str, username: str, password: str, role: str) -> None:
+        validate_password(password)
         with self.connection() as conn:
             conn.execute(
                 "INSERT INTO usuarios (nombre, usuario, password, rol) VALUES (?, ?, ?, ?)",
                 (name.strip(), username.strip(), hash_password(password), role),
             )
+
+    def update_user(
+        self, user_id: int, name: str, username: str, role: str, password: str = ""
+    ) -> None:
+        if password:
+            validate_password(password)
+        with self.connection() as conn:
+            if password:
+                conn.execute(
+                    "UPDATE usuarios SET nombre = ?, usuario = ?, rol = ?, password = ?, "
+                    "intentos_fallidos = 0, bloqueado = 0, bloqueado_hasta = NULL "
+                    "WHERE id_usuario = ?",
+                    (name.strip(), username.strip(), role, hash_password(password), user_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE usuarios SET nombre = ?, usuario = ?, rol = ? "
+                    "WHERE id_usuario = ?",
+                    (name.strip(), username.strip(), role, user_id),
+                )
+
+    def delete_user(self, user_id: int) -> None:
+        with self.connection() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) AS total FROM usuarios "
+                "WHERE rol = 'Administrador'"
+            ).fetchone()["total"]
+            target = conn.execute(
+                "SELECT rol FROM usuarios WHERE id_usuario = ?", (user_id,)
+            ).fetchone()
+            if target is None:
+                raise ValueError("El usuario no existe.")
+            if target["rol"] == "Administrador" and count <= 1:
+                raise ValueError("Debe existir al menos un administrador.")
+            usage = conn.execute(
+                "SELECT 1 FROM reservas WHERE id_usuario = ? LIMIT 1", (user_id,)
+            ).fetchone()
+            if usage:
+                raise ValueError("No se puede eliminar: el usuario tiene reservas asociadas.")
+            conn.execute("DELETE FROM usuarios WHERE id_usuario = ?", (user_id,))
 
     def list_tables(self) -> list[dict]:
         with self.connection() as conn:

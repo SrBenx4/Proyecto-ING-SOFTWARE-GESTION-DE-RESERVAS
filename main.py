@@ -20,7 +20,6 @@ class DonQueloApp(ctk.CTk):
         self.minsize(760, 580)
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
-
         self.database = DatabaseManager()
         self.login_controller = LoginController(self.database)
         self.reservation_controller = ReservaController(self.database)
