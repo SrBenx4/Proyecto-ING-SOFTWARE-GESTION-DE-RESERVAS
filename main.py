@@ -42,6 +42,7 @@ class DonQueloApp(ctk.CTk):
                 "register": lambda: self._open_reservations(user, "register"),
                 "edit": lambda: self._open_reservations(user, "edit"),
                 "cancel": lambda: self._open_reservations(user, "cancel"),
+                "delete": lambda: self._open_reservations(user, "delete"),
             })
         if user.rol in ("Administrador", "Jefe"):
             actions["history"] = lambda: HistorialView(self, self.database)

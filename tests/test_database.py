@@ -69,9 +69,56 @@ class DatabaseAndReservationTests(unittest.TestCase):
             [row["id_mesa"] for row in self.reservations.available_tables(future, "17:00", 2)],
         )
 
+    def test_reservation_update_and_physical_delete_are_supported(self):
+        table = next(
+            row for row in self.database.list_tables() if row["capacidad"] >= 4
+        )
+        future = (date.today() + timedelta(days=1)).isoformat()
+        reservation_id = self.reservations.create(
+            self.admin, "Cliente Inicial", "111111", future, "16:00", "2",
+            table["id_mesa"], "Inicial",
+        )
+        self.reservations.update(
+            reservation_id, "Cliente Modificado", "222222", future, "16:30",
+            "3", table["id_mesa"], "Modificada",
+        )
+        updated = self.database.list_reservations()[0]
+        self.assertEqual(updated["cliente"], "Cliente Modificado")
+        self.assertEqual(updated["telefono"], "222222")
+        self.assertEqual(updated["hora"], "16:30")
+        self.assertEqual(updated["observaciones"], "Modificada")
+        self.reservations.delete(reservation_id)
+        self.assertEqual(self.database.list_reservations(), [])
+
     def test_history_can_filter_past_dates(self):
         rows = self.reservations.reservations(date="2000-01-01", past_only=True)
         self.assertEqual(rows, [])
+
+    def test_user_crud_persists_and_updates_password_safely(self):
+        self.database.create_user(
+            "Usuario CRUD", "crud", "Prueba123!", "Garzon"
+        )
+        user = next(
+            row for row in self.database.list_users() if row["usuario"] == "crud"
+        )
+        user_id = user["id_usuario"]
+        self.database.update_user(
+            user_id, "Usuario Modificado", "crud_mod", "Jefe", "Nueva123!"
+        )
+        updated = next(
+            row for row in self.database.list_users() if row["id_usuario"] == user_id
+        )
+        self.assertEqual(updated["nombre"], "Usuario Modificado")
+        self.assertEqual(updated["usuario"], "crud_mod")
+        self.assertEqual(updated["rol"], "Jefe")
+        self.assertIsNotNone(
+            self.database.authenticate("crud_mod", "Nueva123!")
+        )
+        self.database.delete_user(user_id)
+        self.assertNotIn(
+            user_id,
+            [row["id_usuario"] for row in self.database.list_users()],
+        )
 
     def test_password_must_be_strong_and_account_locks_after_three_attempts(self):
         with self.assertRaisesRegex(ValueError, "símbolo"):

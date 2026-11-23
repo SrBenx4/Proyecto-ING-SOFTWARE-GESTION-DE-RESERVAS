@@ -45,6 +45,7 @@ class ReservasView(ctk.CTkToplevel):
             "register": "Registrar reserva",
             "edit": "Modificar reserva",
             "cancel": "Cancelar reserva",
+            "delete": "Eliminar reserva",
         }.get(self.mode, "Reservas")
 
     def _build_form(self):
@@ -129,8 +130,12 @@ class ReservasView(ctk.CTkToplevel):
         self.tree.column("cliente", width=150)
         self.tree.column("telefono", width=110)
         self.tree.column("responsable", width=150)
-        if self.mode in ("edit", "cancel"):
-            action_text = "Cargar seleccionada" if self.mode == "edit" else "Cancelar seleccionada"
+        if self.mode in ("edit", "cancel", "delete"):
+            action_text = {
+                "edit": "Cargar seleccionada",
+                "cancel": "Cancelar seleccionada",
+                "delete": "Eliminar seleccionada",
+            }[self.mode]
             ctk.CTkButton(
                 panel, text=action_text, height=38, fg_color=PRIMARY,
                 command=self.selected_action,
@@ -223,6 +228,23 @@ class ReservasView(ctk.CTkToplevel):
         reservation_id = int(self.tree.item(selection[0], "values")[0])
         rows = self.controller.reservations()
         row = next(item for item in rows if item["id_reserva"] == reservation_id)
+        if self.mode == "delete":
+            if not messagebox.askyesno(
+                "Eliminar reserva",
+                f"¿Eliminar permanentemente la reserva #{reservation_id}? Esta acción no se puede deshacer.",
+                parent=self,
+            ):
+                return
+            try:
+                self.controller.delete(reservation_id)
+                self.refresh()
+                self.on_change()
+                messagebox.showinfo(
+                    "Reservas", "La reserva fue eliminada correctamente.", parent=self
+                )
+            except (ValueError, sqlite3.Error) as exc:
+                messagebox.showerror("No se pudo eliminar", str(exc), parent=self)
+            return
         if self.mode == "cancel":
             if not messagebox.askyesno(
                 "Cancelar reserva", f"¿Cancelar la reserva #{reservation_id}?",

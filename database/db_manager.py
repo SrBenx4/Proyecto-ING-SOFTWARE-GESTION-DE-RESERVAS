@@ -234,6 +234,12 @@ class DatabaseManager:
         return [dict(row) for row in rows]
 
     def create_user(self, name: str, username: str, password: str, role: str) -> None:
+        if not name.strip():
+            raise ValueError("El nombre es obligatorio.")
+        if not username.strip():
+            raise ValueError("El nombre de usuario es obligatorio.")
+        if role not in ("Administrador", "Garzon", "Jefe"):
+            raise ValueError("El rol seleccionado no es válido.")
         validate_password(password)
         with self.connection() as conn:
             conn.execute(
@@ -244,6 +250,12 @@ class DatabaseManager:
     def update_user(
         self, user_id: int, name: str, username: str, role: str, password: str = ""
     ) -> None:
+        if not name.strip():
+            raise ValueError("El nombre es obligatorio.")
+        if not username.strip():
+            raise ValueError("El nombre de usuario es obligatorio.")
+        if role not in ("Administrador", "Garzon", "Jefe"):
+            raise ValueError("El rol seleccionado no es válido.")
         if password:
             validate_password(password)
         with self.connection() as conn:
@@ -404,6 +416,27 @@ class DatabaseManager:
             )
             if cursor.rowcount == 0:
                 raise ValueError("La reserva no existe o ya está cancelada.")
+
+    def delete_reservation(self, reservation_id: int) -> None:
+        with self.connection() as conn:
+            reservation = conn.execute(
+                "SELECT id_cliente FROM reservas WHERE id_reserva = ?",
+                (reservation_id,),
+            ).fetchone()
+            if reservation is None:
+                raise ValueError("La reserva no existe.")
+            conn.execute(
+                "DELETE FROM reservas WHERE id_reserva = ?", (reservation_id,)
+            )
+            client_id = int(reservation["id_cliente"])
+            remaining = conn.execute(
+                "SELECT 1 FROM reservas WHERE id_cliente = ? LIMIT 1",
+                (client_id,),
+            ).fetchone()
+            if remaining is None:
+                conn.execute(
+                    "DELETE FROM clientes WHERE id_cliente = ?", (client_id,)
+                )
 
     def list_reservations(
         self, date: str = "", customer: str = "", state: str = "", past_only: bool = False

@@ -40,6 +40,7 @@ class MenuView(ctk.CTkFrame):
             ("Ver reservas", "view", "Consultar reservas registradas"),
             ("Modificar reserva", "edit", "Actualizar una reserva activa"),
             ("Cancelar reserva", "cancel", "Cancelar sin borrar el registro"),
+            ("Eliminar reserva", "delete", "Eliminar permanentemente un registro"),
             ("Disponibilidad de mesas", "availability", "Consultar mesas por fecha y hora"),
             ("Historial", "history", "Consultar reservas pasadas"),
             ("Gestionar usuarios", "users", "Crear cuentas y asignar roles"),

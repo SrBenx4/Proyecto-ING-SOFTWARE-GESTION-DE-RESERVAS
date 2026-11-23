@@ -54,8 +54,9 @@ python -m database.seed_test_data
 4. Seleccione una mesa disponible; el sistema mostrará solo las mesas compatibles con la cantidad de personas y el horario.
 5. Use **Ver reservas** para consultar el listado y aplicar filtros por fecha.
 6. Los usuarios Administrador y Garzón pueden modificar o cancelar reservas.
-7. Los usuarios Administrador y Jefe pueden consultar el historial.
-8. Solo el Administrador puede gestionar cuentas de usuario.
+7. Los usuarios Administrador y Garzón pueden eliminar reservas registradas después de confirmar la acción.
+8. Los usuarios Administrador y Jefe pueden consultar el historial.
+9. Solo el Administrador puede gestionar cuentas de usuario.
 
 Al cancelar una reserva, el registro no se elimina y la mesa vuelve a quedar disponible. Las reservas inactivas quedan registradas en el historial.
 

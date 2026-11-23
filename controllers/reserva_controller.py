@@ -72,6 +72,9 @@ class ReservaController:
             self.validate_date(date), self.validate_time(time), count, notes,
         )
 
+    def delete(self, reservation_id: int) -> None:
+        self.database.delete_reservation(reservation_id)
+
     def reservations(
         self, date: str = "", customer: str = "", state: str = "", past_only: bool = False
     ) -> list[dict]:
