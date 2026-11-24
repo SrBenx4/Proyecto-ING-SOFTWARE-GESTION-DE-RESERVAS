@@ -16,8 +16,8 @@ class DonQueloApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Don Quelo · Gestión de reservas")
-        self.geometry("920x680")
-        self.minsize(760, 580)
+        self.geometry("1040x760")
+        self.minsize(860, 650)
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
         self.database = DatabaseManager()

@@ -16,19 +16,47 @@ Aplicación de escritorio desarrollada con Python y CustomTkinter para registrar
 
 ## Instalación y ejecución
 
-Desde PowerShell, ubíquese en la carpeta del proyecto y cree un entorno virtual:
+### Inicio con un clic en Windows
 
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
+Haga doble clic en `iniciar.bat`, ubicado en la carpeta del proyecto. La primera vez,
+prepara el entorno virtual e instala las dependencias; después abre la aplicación
+directamente. Se requiere Python 3.10 o superior. Si Windows no reconoce el archivo,
+haga clic derecho y seleccione **Abrir**.
 
-Inicie la aplicación con:
+### Inicio manual
+
+Desde PowerShell, ubíquese en la carpeta del proyecto y ejecute:
 
 ```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 python main.py
 ```
+
+## Ver la base de datos interna
+
+La aplicación guarda sus datos en el archivo SQLite `database\database.db`, dentro
+de la carpeta del proyecto. Para consultar las tablas gráficamente:
+
+1. Instale **DB Browser for SQLite** desde su sitio oficial.
+2. Abra el programa y seleccione **Open Database**.
+3. Elija `database\database.db` en la carpeta del proyecto.
+4. En **Browse Data**, seleccione la tabla que desea consultar.
+
+También puede abrir ese archivo con una extensión de SQLite en Visual Studio Code.
+Para evitar dañar los datos, cierre la aplicación antes de modificar la base y haga
+una copia de seguridad. Las contraseñas de usuarios se almacenan como hashes, no
+como texto legible.
+
+### Tablas
+
+| Tabla | Para qué sirve |
+|---|---|
+| `usuarios` | Guarda las cuentas que acceden al sistema, sus roles y los datos necesarios para controlar intentos fallidos y bloqueos. Las contraseñas se guardan como hashes. |
+| `clientes` | Guarda el nombre y teléfono de las personas que realizan reservas. |
+| `mesas` | Mantiene el catálogo de mesas, incluyendo su número, capacidad y ubicación. |
+| `reservas` | Registra cada reserva: cliente, usuario responsable, mesa, fecha, hora, cantidad de personas, estado y observaciones. |
 
 La base de datos SQLite se crea automáticamente en `database\database.db`. Al iniciar por primera vez también se crean el usuario administrador y las 20 mesas disponibles.
 
